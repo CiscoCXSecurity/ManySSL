@@ -12,9 +12,26 @@ localhost:443
 
 assuming you have an SSL web server on your machine. (only use host names if you can resolve them).
 
-Then to run :
+Example 1:
 
 ./manyssl.pl -f <myfile.txt>
+
+Example 2:
+
+./manyssl.pl -s 192.168.0.1 -p 443
+
+Example 3:
+
+./manyssl.pl -s 192.168.0.1,192.168.1.1,192.168.2.3 -p 443
+
+Example 4:
+
+./manyssl.pl -s 192.168.0.1-254 -p 443
+
+Example 5 (STARTTLS):
+
+./manyssl.pl -f mailservers.txt -m
+
 
 if you want to list only weak ciphers use the '-c 128' option.
 
@@ -36,3 +53,7 @@ REQUIREMENTS
 Additional Perl Libraries: 
 * Net::SSLeay
 * Parallel::ForkManager
+* Net::Packet::Utils
+* IO::Socket::INET
+* IO::Socket::SSL
+* Term::ANSIColor

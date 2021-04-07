@@ -1,15 +1,30 @@
 MANYSSL(1)                                                                      User Contributed Perl Documentation                                                                      
 
 DESCRIPTION
-       This perl script will enumerate the SSL ciphers in use on any SSL encrypted service.
+       This perl script will enumerate the SSL ciphers in use on any SSL encrypted service, including STARTTLS on SMTP.  The script will warn the operator if a self 
+       signed certificate is detected on a https encrypted service.
 
 USAGE
-       ./manyssl.pl -f [targets_file] -c [128]
+       Usage:  ./manyssl1.2.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(secs)] [-c 128]
 
-       ./manyssl.pl -u
+               [-h]            this help message
+               [-f]            accept a file denoting targets, in the form ip:port
+               [-m]            servers are a mailserver; perform starttls
+               [-s]            server ip. Accepted forms: single ip 192.168.0.1 or range 192.168.0.1-254 or comma delimited 192.168.0.1,192.168.1.2
+               [-p]            port number of ssl service
+               [-c 128]        only display ciphers with a key length under 128 bits
+               [-t timeout]    alter the timeout value in seconds (default 10 secs)
+
+UPDATING 
+       update: ./manyssl.pl -u updates the cipher DB through openssl
 
 AUTHOR
-       Copyright (C) 01-08-2007 Andy $Portcullis tools@portcullis-security.com
+       Copyright (C) 28-01-2008 Andy Portcullis tools@portcullis-security.com
+
+WHATS NEW
+       Improved the following:
+       * Basic check for Self Signed Certificates
+       * Support for STARTTLS on mail servers
 
 REQUIREMENTS
        Perl Libraries:
@@ -18,9 +33,17 @@ REQUIREMENTS
 
        * Parallel::ForkManager
 
+       * Net::Packet::Utils
+   
+       * IO::Socket::INET
+
+       * IO::Socket::SSL
+
+       * Term::ANSIColor
+
 LICENSE
         manyssl - SSL cipher checker
-        Copyright (C) 2007  Portcullis
+        Copyright (C) 2008  Portcullis
 
         This program is free software; you can redistribute it and/or modify
         it under the terms of the GNU General Public License as published by
@@ -39,6 +62,4 @@ LICENSE
         You are encouraged to send comments, improvements or suggestions to
         me at tools@portcullis-security.com
 
-
-
-perl v5.8.8                                                                                  2007-09-13                                                                                  
+perl v5.8.8                                                                                  2008-01-28                                                                                  
