@@ -1,0 +1,38 @@
+Extra help
+======================================================================================================
+
+
+Usage
+======
+To use first create a host file with a list of servers and ports you wish to test.
+Eg.
+
+127.0.0.1:443
+localhost:443
+
+assuming you have an SSL web server on your machine. (only use host names if you can resolve them).
+
+Then to run :
+
+./manyssl.pl -f <myfile.txt>
+
+if you want to list only weak ciphers use the '-c 128' option.
+
+Eg.
+
+./manyssl.pl -f <myfile.txt> -c 128
+
+Updating the SSL library
+=========================
+
+When you first run the program, or update your SSL library you may need to run
+
+./manyssl.pl -u
+
+to get the program to run correctly.
+
+REQUIREMENTS
+================
+Additional Perl Libraries: 
+* Net::SSLeay
+* Parallel::ForkManager
