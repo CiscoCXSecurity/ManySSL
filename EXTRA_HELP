@@ -1,6 +1,14 @@
 Extra help
 ======================================================================================================
 
+First Use
+=========
+
+You may get the error:
+    Error: openssl not found!
+
+This means either Openssl is not installed on the system, or this is the first time you've run the program and it needed to generate ciphers.txt.
+Please try again.
 
 Usage
 ======
@@ -32,6 +40,19 @@ Example 5 (STARTTLS):
 
 ./manyssl.pl -f mailservers.txt -m
 
+Example 6 (scan server with specific client certificate):
+
+./manssl.pl -s 127.0.0.1 -p 443 -v /usr/share/ca-certificates/mozilla/ca.crt
+
+Note:
+If you recieve the following error
+     SSL negotiation failed: error:1407E086:SSL routines:SSL2_SET_CERTIFICATE:certificate verify failed at ./manyssl1.5.pl line 801
+
+It means that the SSL certificate is invalid using the client certificate you set, and that it fails verification.  
+(In this instance its a self signed certificate, so it fails verification) 
+
+Other Options
+==============
 
 if you want to list only weak ciphers use the '-c 128' option.
 

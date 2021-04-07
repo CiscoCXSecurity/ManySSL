@@ -10,7 +10,7 @@ The script will also warn the operator if a self signed certificate is detected.
 
 =head1 USAGE
 
-Usage:  ./manyssl.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(secs)] [-c 128] [-x host:port]
+Usage:  ./manyssl.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(secs)] [-c 128]
 
         [-h]            this help message
         [-f]            accept a file denoting targets, in the form ip:port
@@ -18,10 +18,10 @@ Usage:  ./manyssl.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(sec
         [-s]            server ip. Accepted forms: single ip 192.168.0.1 or range 192.168.0.1-254 or comma delimited 192.168.0.1,192.168.1.2
         [-p]            port number of ssl service
         [-c 128]        only display ciphers with a key length under 128 bits
-	[-r]		highlight weak ciphers in RED?
-	[-x]            use a http proxy
+	[-r]		highlight weak ciphers in RED
 	[-g]		only display ciphers not compilant with government standards
         [-t timeout]    alter the timeout value in seconds (default 10 secs)
+	[-v CAfile]	verify server certificate against client certificate (.pem or .crt)
 
 =head1 UPDATING
 
@@ -107,7 +107,7 @@ my $proxy_flag=0;
 
 #Get command line flags
 my %opts;
-getopt('f:t:c:u:h:m:s:p:g:r:x', \%opts);
+getopt('f:t:c:u:h:m:s:p:g:r:x:v:D', \%opts);
 
 if (exists $opts{h}){ &usage;}
 
@@ -132,6 +132,19 @@ if (exists $opts{r}){
 	$color=1;
 }else{
         $color=0;
+}
+
+if (exists $opts{v}){
+	$verify_cert=1;
+	$ENV{HTTPS_CA_FILE}=$opts{v};
+}else{
+        $verify_cert=0;
+}
+
+if (exists $opts{D}){
+	$DEBUG=1;
+}else{
+        $DEBUG=0;
 }
 
 if (exists $opts{x}){
@@ -269,7 +282,8 @@ sub usage{
 	print "\t[-p]\t\tport number of ssl service\n";
 	print "\t[-c 128]\tonly display ciphers with a key length under 128 bits\n";
 	#print "\t[-g]\t\tonly display ciphers not compilant with government standards\n";
-	print "\t[-t timeout]\talter the timeout value in seconds (default 10 secs)\n\n"; 
+	print "\t[-t timeout]\talter the timeout value in seconds (default 10 secs)\n"; 
+	print "\t[-v CAfile]\tverify server certificate against set client certificate\n\n";
 	print "Update: $0 -u\n\tupdates the cipher DB through openssl\n";
 	exit(0);
 }#end usage
@@ -281,13 +295,19 @@ if (-e "./ciphers.txt"){
 	
 	foreach $line (@content){
 		$_=$line;
-		if(/(.*)\w*SSLv3.*Enc=(\S+)\s.*M.*/){
+		if(/(.*)\w*SSLv3\sKx=([\w|\d|\(|\)]+).*Au=(\w+).*Enc=(\S+)\s.*Mac=(.*)/){
 			push(@ssl3,$1);
-			push(@ssl3t,$2);
+			push(@ssl3k,$2);
+			push(@ssl3a,$3);
+			push(@ssl3t,$4);
+			push(@ssl3m,$5);
 		}
-		if(/(.*)\w*SSLv2.*Enc=(\S+)\s.*M.*/){
+		if(/(.*)\w*SSLv2\sKx=([\w|\d|\(|\)]+).*Au=(\w+).*Enc=(\S+)\s.*Mac=(.*)/){
 			push(@ssl2,$1);
-			push(@ssl2t,$2);
+			push(@ssl2k,$2);
+			push(@ssl2a,$3);
+			push(@ssl2t,$4);
+			push(@ssl2m,$5);
 		}
 	}
 }else{
@@ -299,13 +319,19 @@ if (-e "./ciphers.txt"){
 	
 	foreach $line (@content){
 		$_=$line;
-		if(/(.*)\w*SSLv3.*Enc=(\S+)\s.*M.*/){
+		if(/(.*)\w*SSLv3\sKx=([\w|\d|\(|\)]+).*Au=(\w+).*Enc=(\S+)\s.*Mac=(.*)/){
 			push(@ssl3,$1);
-			push(@ssl3t,$2);
+			push(@ssl3k,$2);
+			push(@ssl3a,$3);
+			push(@ssl3t,$4);
+			push(@ssl3m,$5);
 		}
-		if(/(.*)\w*SSLv2.*Enc=(\S+)\s.*M.*/){
+		if(/(.*)\w*SSLv2\sKx=([\w|\d|\(|\)]+).*Au=(\w+).*Enc=(\S+)\s.*Mac=(.*)/){
 			push(@ssl2,$1);
-			push(@ssl2t,$2);
+			push(@ssl2k,$2);
+			push(@ssl2a,$3);
+			push(@ssl2t,$4);
+			push(@ssl2m,$5);
 		}
 	};
 }
@@ -326,12 +352,13 @@ if($starttls==0){
 		shutdown S, 1;  			# Half close --> No more output, sends EOF to server
 		close S;
 	
-		&main_sslv3(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl3,\@ssl3t);
-		&main_sslv2(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl2,\@ssl2t);
-		&main_tlsv1(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl3,\@ssl3t);
+		&main_sslv3(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl3,\@ssl3t,\@ssl3k,\@ssl3a,\@ssl3m);
+		&main_sslv2(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl2,\@ssl2t,\@ssl2k,\@ssl2a,\@ssl2m);
+		&main_tlsv1(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl3,\@ssl3t,\@ssl3k,\@ssl3a,\@ssl3m);
 		$main_loop->finish;
 	}
 	$main_loop->wait_all_children;
+	delete $ENV{HTTPS_CA_FILE};
 }#end if
 else{
 	for ($a=0; $a<@target_list; $a++){
@@ -347,8 +374,9 @@ else{
 		shutdown S, 1;  			# Half close --> No more output, sends EOF to server
 		close S;
 
-		&starttlssub(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl3,\@ssl3t);
+		&starttlssub(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl3,\@ssl3t,\@ssl3k,\@ssl3a,@ssl3m);
 	}#end for
+	delete $ENV{HTTPS_CA_FILE};
 }#end else & if-starttls
 
 
@@ -360,12 +388,18 @@ my $mydest_s_ptr=$_[2];
 my $mydest_i_ptr=$_[3];
 my $myssl3_ptr=$_[4];
 my $myssl3t_ptr=$_[5];
+my $myssl3k_ptr=$_[6];
+my $myssl3a_ptr=$_[7];
+my $myssl3m_ptr=$_[8];
 $dest_serv_params=$$dest_serv_param_ptr;
 $port=$$myport_ptr;
 $dest_serv=$$mydest_s_ptr;
 $dest_ipint=$$mydest_i_ptr;
 @ssl3=@$myssl3_ptr;
 @ssl3t=@$myssl3t_ptr;
+@ssl3k=@$myssl3k_ptr;
+@ssl3a=@$myssl3a_ptr;
+@ssl3m=@$myssl3m_ptr;
 $w_ssl=0;
 
 	for($ddd=0; $ddd<@ssl3; $ddd++){
@@ -394,27 +428,28 @@ $w_ssl=0;
 					else{print &analyse_cert($cert);}
                                 	$w_ssl=1;
                         	}
+				
 				if ($c128==128){
 					if (@ssl3t[$ddd]=~/256|168|128/){}
 					else{
-						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 					}
 				}elsif(($gov==1)&&($c128!=128)){
 					if ((@ssl3t[$ddd]=~/256/)||(@ssl3t[$ddd]=~/168/)&&(@ssl3[$ddd]=~/EDH|DHE/)){}
 					else{
-						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 					}
 				}else{
 					if (@ssl3t[$ddd]=~/256|168|128/){
-						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 					}
 					elsif(@ssl3t[$ddd]=~/ADH/){
-						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";}
 					}
 					else{
-						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";}
 					}
 				}
 			}
@@ -445,12 +480,18 @@ my $mydest_s_ptr=$_[2];
 my $mydest_i_ptr=$_[3];
 my $myssl2_ptr=$_[4];
 my $myssl2t_ptr=$_[5];
+my $myssl2k_ptr=$_[6];
+my $myssl2a_ptr=$_[7];
+my $myssl2m_ptr=$_[8];
 $dest_serv_params=$$dest_serv_param_ptr;
 $port=$$myport_ptr;
 $dest_serv=$$mydest_s_ptr;
 $dest_ipint=$$mydest_i_ptr;
 @ssl2=@$myssl2_ptr;
 @ssl2t=@$myssl2t_ptr;
+@ssl2k=@$myssl2k_ptr;
+@ssl2a=@$myssl2a_ptr;
+@ssl2m=@$myssl2m_ptr;
 
 	for($ddd=0; $ddd<@ssl2; $ddd++){
 		eval {
@@ -476,23 +517,23 @@ $dest_ipint=$$mydest_i_ptr;
 				if ($c128==128){
 					if (@ssl2t[$ddd]=~/256|168|128/){}
 					else{
-						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n";}
 					}
 				}elsif(($gov==1)&&($c128!=128)){
 					if ((@ssl2t[$ddd]=~/256/)||(@ssl2t[$ddd]=~/168/)&&(@ssl3[$ddd]=~/EDH|DHE/)){}
 					else{
-						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n";}
 					}
 				}else{
 					if (@ssl2t[$ddd]=~/256|168|128/){
-						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n";}
 					}
 					elsif(@ssl2t[$ddd]=~/ADH/){
-						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd] :Kx=@ssl2k[$ddd] :Au=@ssl2a[$ddd] :M=@ssl2m[$ddd]\n";}
 					}
 					else{
 						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
@@ -527,12 +568,18 @@ my $mydest_s_ptr=$_[2];
 my $mydest_i_ptr=$_[3];
 my $myssl3_ptr=$_[4];
 my $myssl3t_ptr=$_[5];
+my $myssl3k_ptr=$_[6];
+my $myssl3a_ptr=$_[7];
+my $myssl3m_ptr=$_[8];
 $dest_serv_params=$$dest_serv_param_ptr;
 $port=$$myport_ptr;
 $dest_serv=$$mydest_s_ptr;
 $dest_ipint=$$mydest_i_ptr;
 @ssl3=@$myssl3_ptr;
 @ssl3t=@$myssl3t_ptr;
+@ssl3k=@$myssl3k_ptr;
+@ssl3a=@$myssl3a_ptr;
+@ssl3m=@$myssl3m_ptr;
 
 	for($ddd=0; $ddd<@ssl3; $ddd++){
 		eval {
@@ -558,24 +605,24 @@ $dest_ipint=$$mydest_i_ptr;
 				if ($c128==128){
 					if(@ssl3t[$ddd]=~/256|168|128/){}
 					else{
-						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 					}
 				}elsif(($gov==1)&&($c128!=128)){
 					if((@ssl3t[$ddd]=~/256/)||(@ssl3t[$ddd]=~/168/)&&(@ssl3[$ddd]=~/EDH|DHE/)){}
 					else{
-						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 					}
 				}else{
 					if (@ssl3t[$ddd]=~/256|168|128/){
-						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 					}
 					elsif(@ssl3t[$ddd]=~/ADH/){
-						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [TLS v31]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [TLS v31]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";}
 					}
 					else{
-						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
-						else{print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";}
 					}
 				}
 			}
@@ -606,6 +653,9 @@ my $mydest_s_ptr=$_[2];
 my $mydest_i_ptr=$_[3];
 my $myssl3_ptr=$_[4];
 my $myssl3t_ptr=$_[5];
+my $myssl3k_ptr=$_[6];
+my $myssl3a_ptr=$_[7];
+my $myssl3m_ptr=$_[8];
 
 $dest_serv_params=$$dest_serv_param_ptr;
 $port=$$myport_ptr;
@@ -613,7 +663,9 @@ $dest_serv=$$mydest_s_ptr;
 $dest_ipint=$$mydest_i_ptr;
 @ssl3=@$myssl3_ptr;
 @ssl3t=@$myssl3t_ptr;
-
+@ssl3k=@$myssl3k_ptr;
+@ssl3a=@$myssl3a_ptr;
+@ssl3m=@$myssl3m_ptr;
 #STARTTLS routine for mail servers
 for($ddd=0; $ddd<@ssl3; $ddd++){
 
@@ -647,21 +699,22 @@ for($ddd=0; $ddd<@ssl3; $ddd++){
 		if (!/.*(NONE)/){
 			$cert=Net::SSLeay::dump_peer_certificate($ssl);
                         if (($w_ssl==0)&&(length($cert)>1)){
-                                print RED, &analyse_cert($cert), RESET;
+                               if($color==1){print RED, &analyse_cert($cert), RESET;}
+				else{print &analyse_cert($cert);}
                                 $w_ssl=1;
                         }
 			if ($c128==128){
 				if(@ssl3t[$ddd]=~/256|168|128/){}
 				else{
-					print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+					print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 				}
 			}elsif(($gov==1)&&($c128!=128)){
 				if((@ssl3t[$ddd]=~/256/)&&(@ssl3[$ddd]=~/EDH|DHE/)){}
 				else{
-					print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+					print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 				}
 			}else{
-				print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
+				print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd] :Kx=@ssl3k[$ddd] :Au=@ssl3a[$ddd] :M=@ssl3m[$ddd]\n";
 			}
 		}
 	
@@ -745,26 +798,28 @@ my $analysis="";
 		}
 	}
 	
-	my $sock = Net::SSL->new(
+	if ( $verify_cert==1){}
+	else{
+		my $sock = Net::SSL->new(
 			     PeerAddr => $dest_ipint,
 			     PeerPort => $port,
 			     Timeout => 15,
 			     );
-	$sock || ($@ ||= "no Net::SSL connection established");
-	my $error = $@;
-	$error && die("Can't connect to $host:$port; $error; $!");
-	my $server_cert = $sock->get_peer_certificate;
-	my $enddate = $server_cert->not_after;
-	#print "$enddate\n";
+		$sock || ($@ ||= "no Net::SSL connection established");
+		my $error = $@;
+		$error && die("Can't connect to $host:$port; $error; $!");
+		my $server_cert = $sock->get_peer_certificate;
+		my $enddate = $server_cert->not_after;
+		#print "$enddate\n";
 		
-	@expiredt=split(" |-",$enddate);
-	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime time;
-	$epoch_today = timelocal(0,0,0, $mday,($mon-1),($year+1900));
-	$epoch_expire = timelocal(0, 0, 0, $expiredt[2], ($expiredt[1]-1), $expiredt[0]);
-	if ($epoch_expire<$epoch_today){
-		$analysis=$analysis."WARNING: ($dest_ipint):$port - Certificate Expired! $enddate\n";
+		@expiredt=split(" |-",$enddate);
+		my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime time;
+		$epoch_today = timelocal(0,0,0, $mday,($mon-1),($year+1900));
+		$epoch_expire = timelocal(0, 0, 0, $expiredt[2], ($expiredt[1]-1), $expiredt[0]);
+		if ($epoch_expire<$epoch_today){
+			$analysis=$analysis."WARNING: ($dest_ipint):$port - Certificate Expired! $enddate\n";
+		}
 	}
- 
 	return $analysis;
 }
 
