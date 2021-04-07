@@ -10,7 +10,7 @@ The script will also warn the operator if a self signed certificate is detected.
 
 =head1 USAGE
 
-Usage:  ./manyssl.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(secs)] [-c 128]
+Usage:  ./manyssl.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(secs)] [-c 128] [-x host:port]
 
         [-h]            this help message
         [-f]            accept a file denoting targets, in the form ip:port
@@ -18,6 +18,8 @@ Usage:  ./manyssl.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(sec
         [-s]            server ip. Accepted forms: single ip 192.168.0.1 or range 192.168.0.1-254 or comma delimited 192.168.0.1,192.168.1.2
         [-p]            port number of ssl service
         [-c 128]        only display ciphers with a key length under 128 bits
+	[-r]		highlight weak ciphers in RED?
+	[-x]            use a http proxy
 	[-g]		only display ciphers not compilant with government standards
         [-t timeout]    alter the timeout value in seconds (default 10 secs)
 
@@ -101,11 +103,11 @@ my $timeout=10;
 my $subj="";
 my $issue="";
 my $w_ssl=0;
-
+my $proxy_flag=0;
 
 #Get command line flags
 my %opts;
-getopt('f:t:c:u:h:m:s:p:g', \%opts);
+getopt('f:t:c:u:h:m:s:p:g:r:x', \%opts);
 
 if (exists $opts{h}){ &usage;}
 
@@ -126,6 +128,26 @@ if (exists $opts{m}){
         $starttls=0;
 }
 
+if (exists $opts{r}){
+	$color=1;
+}else{
+        $color=0;
+}
+
+if (exists $opts{x}){
+        $proxy_flag=1;
+	$proxy=$opts{x};
+	if ($proxy=~/[a-zA-Z|0-9|\.]+\:\d+/){
+		$proxy=~/(.*)\:(\d.*)/;
+		$proxy_name = gethostbyname ($1);
+ 		$proxy_ip=inet_ntoa(inet_aton($1));
+		$proxy_port=($2)
+	}else{
+		die "proxy must be in correct format (host:port)";
+	}
+}else{
+        $proxy_flag=0;
+}
 
 if (exists $opts{u}) { 
 	system("openssl ciphers -v ALL:COMPLEMENTOFALL > ciphers.txt");
@@ -139,18 +161,18 @@ if (exists $opts{f}){
 	@target_list=<FILE>;
 	close(FILE);
 	foreach $host(@target_list){
-		if ($host=~/[a-zA-Z|0-9|\.]+\:\d+/){
-		$host=~/(.*)\:(\d.*)/;
-		$temp = gethostbyname ($1);
- 		$tem2=inet_ntoa(inet_aton($1));
-
-		push(@hosts,$1);
-		push(@hosti,$temp);
-		push(@hostip,$tem2);
-		push(@ports,$2);
+		if ($host=~/[a-zA-Z|\d|\.]+:\d+/){
+			$host=~/(.*):(\d+)/;
+			$temp=gethostbyname($1);
+			$tem2=inet_ntoa(inet_aton($1));
+			
+			push(@hosts,$1);
+			push(@hosti,$temp);
+			push(@hostip,$tem2);
+			push(@ports,$2);
 		}else{
 			die "host file must be in correct format (host:port)";
-		}
+		}	
 	}
 
 }elsif(exists $opts{s}){
@@ -359,13 +381,17 @@ $w_ssl=0;
 			my $ssl = Net::SSLeay::new($ctx) or die_now("Failed to create SSL $!");
 			Net::SSLeay::set_cipher_list($ssl, @ssl3[$ddd]) || die("Failed to set SSL cipher list");
 			Net::SSLeay::set_fd($ssl, fileno(S));	# Must use fileno
+			if($proxy_flag){
+				Net::SSLeay::set_proxy($proxy_ip, $proxy_port);
+			}
 			my $res = Net::SSLeay::connect($ssl);
 			$_=Net::SSLeay::get_cipher($ssl);
-	
+
 			if (!/.*(NONE)/){
 				$cert=Net::SSLeay::dump_peer_certificate($ssl);
                         	if (($w_ssl==0)&&(length($cert)>1)){
-                                	print RED, &analyse_cert($cert), RESET;
+                                	if($color==1){print RED, &analyse_cert($cert), RESET;}
+					else{print &analyse_cert($cert);}
                                 	$w_ssl=1;
                         	}
 				if ($c128==128){
@@ -383,10 +409,12 @@ $w_ssl=0;
 						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
 					}
 					elsif(@ssl3t[$ddd]=~/ADH/){
-						print RED,"$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
 					}
 					else{
-						print RED,"$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
 					}
 				}
 			}
@@ -438,6 +466,9 @@ $dest_ipint=$$mydest_i_ptr;
 			Net::SSLeay::set_cipher_list($ssl, @ssl2[$ddd]) || die("Failed to set SSL cipher list");
 
 			Net::SSLeay::set_fd($ssl, fileno(S));	# Must use fileno
+			if($proxy_flag){
+				Net::SSLeay::set_proxy($proxy_ip, $proxy_port);
+			}
 			$res = Net::SSLeay::connect($ssl);
 
 			$_=Net::SSLeay::get_cipher($ssl);
@@ -445,22 +476,27 @@ $dest_ipint=$$mydest_i_ptr;
 				if ($c128==128){
 					if (@ssl2t[$ddd]=~/256|168|128/){}
 					else{
-						print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
 					}
 				}elsif(($gov==1)&&($c128!=128)){
 					if ((@ssl2t[$ddd]=~/256/)||(@ssl2t[$ddd]=~/168/)&&(@ssl3[$ddd]=~/EDH|DHE/)){}
 					else{
-						print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
 					}
 				}else{
 					if (@ssl2t[$ddd]=~/256|168|128/){
-						print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
 					}
 					elsif(@ssl2t[$ddd]=~/ADH/){
-						print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n",RESET;
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
 					}
 					else{
-						print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n",RESET;
+						if($color==1){print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";}
 					}
 
 				}
@@ -512,6 +548,9 @@ $dest_ipint=$$mydest_i_ptr;
 			Net::SSLeay::set_cipher_list($ssl, @ssl3[$ddd]) || die("Failed to set SSL cipher list");
 
 			Net::SSLeay::set_fd($ssl, fileno(S));	# Must use fileno
+			if($proxy_flag){
+				Net::SSLeay::set_proxy($proxy_ip, $proxy_port);
+			}
 			$res = Net::SSLeay::connect($ssl);
 
 			$_=Net::SSLeay::get_cipher($ssl);
@@ -531,10 +570,12 @@ $dest_ipint=$$mydest_i_ptr;
 						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
 					}
 					elsif(@ssl3t[$ddd]=~/ADH/){
-						print RED,"$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [TLS v31]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
 					}
 					else{
-						print RED,"$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
+						if($color==1){print RED, "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n", RESET;}
+						else{print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";}
 					}
 				}
 			}
@@ -597,6 +638,9 @@ for($ddd=0; $ddd<@ssl3; $ddd++){
 		Net::SSLeay::set_cipher_list($ssl, @ssl3[$ddd]) || die("Failed to set SSL cipher list");
 
 		Net::SSLeay::set_fd($ssl, fileno(S));	# Must use fileno
+		if($proxy_flag){
+			Net::SSLeay::set_proxy($proxy_ip, $proxy_port);
+		}
 		$res = Net::SSLeay::connect($ssl);
 		$_=Net::SSLeay::get_cipher($ssl);
 

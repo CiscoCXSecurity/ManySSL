@@ -13,6 +13,7 @@ USAGE
                [-s]            server ip. Accepted forms: single ip 192.168.0.1 or range 192.168.0.1-254 or comma delimited 192.168.0.1,192.168.1.2
                [-p]            port number of ssl service
                [-c 128]        only display ciphers with a key length under 128 bits
+               [-r]            Highlight weak ciphers in the color "RED"
                [-t timeout]    alter the timeout value in seconds (default 10 secs)
 
 UPDATING 
@@ -22,6 +23,10 @@ AUTHOR
        Copyright (C) 22-08-2008 Andy Portcullis tools@portcullis-security.com
 
 WHATS NEW
+
+2008-11-11
+       * Added an option to use color or not, default color is off
+       * Noticed the -f option didnt properly support ip_address:port, this has been corrected!
 
 2008-09-03
        Corrected the following error(s):
