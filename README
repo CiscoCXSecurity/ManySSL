@@ -5,7 +5,7 @@ DESCRIPTION
        signed certificate is detected on a https encrypted service.
 
 USAGE
-       Usage:  ./manyssl1.4.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(secs)] [-c 128]
+       Usage:  ./manyssl1.6.pl [-h] [-f targets_file] [-m] [-s ip -p port] [-t timeout(secs)] [-c 128]
 
                [-h]            this help message
                [-f]            accept a file denoting targets, in the form ip:port
@@ -24,6 +24,9 @@ AUTHOR
        Copyright (C) 10-12-2008 Andy Portcullis tools@portcullis-security.com
 
 WHATS NEW
+
+2009-07-17
+       * Fixed Certificate parsing bug, that lead the program to crash.
 
 2008-10-12
        * Added support to use a specific CAfile when scanning the server

@@ -30,7 +30,7 @@ update: ./manyssl.pl -u
 
 =head1 AUTHOR
 
-Copyright � 22-08-2008 Andy@Portcullis email:tools@portcullis-security.com
+Copyright (c) 22-08-2008 Andy@Portcullis email:tools@portcullis-security.com
 
 =cut
 
@@ -57,7 +57,7 @@ Perl Libraries:
 =head1 LICENSE 
 
  manyssl - SSL cipher checker
- Copyright � 2008  Portcullis
+ Copyright (c) 2008  Portcullis
  
  This program is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
@@ -97,7 +97,7 @@ use Time::Local;
 
 #Globals
 use vars qw( $VERSION );
-my $VERSION = '1.2';
+my $VERSION = '1.6';
 my $gov=0;
 my $timeout=10;
 my $subj="";
@@ -376,7 +376,7 @@ else{
 
 		&starttlssub(\$dest_serv_params_test,\$port,\$dest_serv,\$dest_ipint,\@ssl3,\@ssl3t,\@ssl3k,\@ssl3a,@ssl3m);
 	}#end for
-	delete $ENV{HTTPS_CA_FILE};
+	#delete $ENV{HTTPS_CA_FILE};
 }#end else & if-starttls
 
 
@@ -697,7 +697,9 @@ for($ddd=0; $ddd<@ssl3; $ddd++){
 		$_=Net::SSLeay::get_cipher($ssl);
 
 		if (!/.*(NONE)/){
+        		
 			$cert=Net::SSLeay::dump_peer_certificate($ssl);
+
                         if (($w_ssl==0)&&(length($cert)>1)){
                                if($color==1){print RED, &analyse_cert($cert), RESET;}
 				else{print &analyse_cert($cert);}
@@ -762,12 +764,15 @@ my ($code, $text, $more) = &get_one_line ($sock);
 }
 
 sub analyse_cert{
-my $cert=shift;
-my $analysis="";
-	#$cert=~ s/[\r|\n]/ /;
+eval{
+	### try block  -sometimes this fails on some servers.
+
+	my $cert=shift;
+	my $analysis="";
 	if ($cert=~/^Subject\sName:\s(.*)[\r|\n]+Issuer\s+Name:\s(.*)[\r|\n]+/){
 		$subj=$1;
 		$issue=$2;
+		
 		if(($subj eq "undefined")||($issue eq "undefined")){
                        print "ERROR!: Certificate undefined!\n";
 		}else{
@@ -821,6 +826,12 @@ my $analysis="";
 		}
 	}
 	return $analysis;
+};
+if($@){
+	###catch block
+	print "Certificate Analysis Failed!\n";
+};
+return "";
 }
 
 $SIG{INT} = \&breakdown;
