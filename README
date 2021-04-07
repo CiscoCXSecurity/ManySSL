@@ -19,9 +19,18 @@ UPDATING
        update: ./manyssl.pl -u updates the cipher DB through openssl
 
 AUTHOR
-       Copyright (C) 28-01-2008 Andy Portcullis tools@portcullis-security.com
+       Copyright (C) 22-08-2008 Andy Portcullis tools@portcullis-security.com
 
 WHATS NEW
+
+2008-09-03
+       Corrected the following error(s):
+       * Validation of SSL certificates (code would fail if first cipher in cipher list was not accepted)
+2008-08-22
+       Improved the following:
+       * Validation of SSL certificates
+       * Checks expiration date of Certificates
+2008-01-28
        Improved the following:
        * Basic check for Self Signed Certificates
        * Support for STARTTLS on mail servers
@@ -40,6 +49,8 @@ REQUIREMENTS
        * IO::Socket::SSL
 
        * Term::ANSIColor
+
+       * Time::Local
 
 LICENSE
         manyssl - SSL cipher checker
@@ -62,4 +73,4 @@ LICENSE
         You are encouraged to send comments, improvements or suggestions to
         me at tools@portcullis-security.com
 
-perl v5.8.8                                                                                  2008-01-28                                                                                  
+perl v5.8.8                                                                                  2008-08-22                                                                                  

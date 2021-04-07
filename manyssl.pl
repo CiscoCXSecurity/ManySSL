@@ -28,7 +28,7 @@ update: ./manyssl.pl -u
 
 =head1 AUTHOR
 
-Copyright � 28-01-2008 Andy@Portcullis email:tools@portcullis-security.com
+Copyright � 22-08-2008 Andy@Portcullis email:tools@portcullis-security.com
 
 =cut
 
@@ -47,6 +47,8 @@ Perl Libraries:
 * IO::Socket::SSL
 
 * Term::ANSIColor
+
+* Time::Local
 
 =cut
 
@@ -76,6 +78,7 @@ Perl Libraries:
 
 #Use Libraries
 use Socket;
+use Net::SSL;
 use Getopt::Std;
 use Net::Packet::Utils qw(:all);
 use Net::SSLeay qw(get_https post_https sslcat make_headers make_form);
@@ -88,6 +91,7 @@ use IO::Socket::INET;
 use IO::Socket::SSL;
 use IO::Socket qw(:DEFAULT);
 use Term::ANSIColor qw(:constants);
+use Time::Local;
 
 #Globals
 use vars qw( $VERSION );
@@ -340,7 +344,7 @@ $dest_serv=$$mydest_s_ptr;
 $dest_ipint=$$mydest_i_ptr;
 @ssl3=@$myssl3_ptr;
 @ssl3t=@$myssl3t_ptr;
-
+$w_ssl=0;
 
 	for($ddd=0; $ddd<@ssl3; $ddd++){
 		eval {
@@ -357,15 +361,13 @@ $dest_ipint=$$mydest_i_ptr;
 			Net::SSLeay::set_fd($ssl, fileno(S));	# Must use fileno
 			my $res = Net::SSLeay::connect($ssl);
 			$_=Net::SSLeay::get_cipher($ssl);
-			
-			$cert= Net::SSLeay::dump_peer_certificate($ssl);
-			if (($w_ssl==0)&&(length($cert)>0)){
-				print RED, &analyse_cert($cert), RESET;
-				$w_ssl=1;
-			}
 	
 			if (!/.*(NONE)/){
-
+				$cert=Net::SSLeay::dump_peer_certificate($ssl);
+                        	if (($w_ssl==0)&&(length($cert)>1)){
+                                	print RED, &analyse_cert($cert), RESET;
+                                	$w_ssl=1;
+                        	}
 				if ($c128==128){
 					if (@ssl3t[$ddd]=~/256|168|128/){}
 					else{
@@ -379,7 +381,11 @@ $dest_ipint=$$mydest_i_ptr;
 				}else{
 					if (@ssl3t[$ddd]=~/256|168|128/){
 						print "$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
-					}else{
+					}
+					elsif(@ssl3t[$ddd]=~/ADH/){
+						print RED,"$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
+					}
+					else{
 						print RED,"$dest_serv ($dest_ipint):$port - [SSL v3]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
 					}
 				}
@@ -449,7 +455,11 @@ $dest_ipint=$$mydest_i_ptr;
 				}else{
 					if (@ssl2t[$ddd]=~/256|168|128/){
 						print "$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n";
-					}else{
+					}
+					elsif(@ssl2t[$ddd]=~/ADH/){
+						print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n",RESET;
+					}
+					else{
 						print RED,"$dest_serv ($dest_ipint):$port - [SSL v2]".Net::SSLeay::get_cipher($ssl)." :@ssl2t[$ddd]\n",RESET;
 					}
 
@@ -519,7 +529,11 @@ $dest_ipint=$$mydest_i_ptr;
 				}else{
 					if (@ssl3t[$ddd]=~/256|168|128/){
 						print "$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n";
-					}else{
+					}
+					elsif(@ssl3t[$ddd]=~/ADH/){
+						print RED,"$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
+					}
+					else{
 						print RED,"$dest_serv ($dest_ipint):$port - [TLS v1]".Net::SSLeay::get_cipher($ssl)." :@ssl3t[$ddd]\n",RESET;
 					}
 				}
@@ -583,18 +597,15 @@ for($ddd=0; $ddd<@ssl3; $ddd++){
 		Net::SSLeay::set_cipher_list($ssl, @ssl3[$ddd]) || die("Failed to set SSL cipher list");
 
 		Net::SSLeay::set_fd($ssl, fileno(S));	# Must use fileno
-
 		$res = Net::SSLeay::connect($ssl);
-
 		$_=Net::SSLeay::get_cipher($ssl);
 
-		$cert= Net::SSLeay::dump_peer_certificate($ssl);
-		if (($w_ssl==0)&&(length($cert)>0)){
-			print RED, &analyse_cert($cert), RESET;
-			$w_ssl=1;
-		}
-
 		if (!/.*(NONE)/){
+			$cert=Net::SSLeay::dump_peer_certificate($ssl);
+                        if (($w_ssl==0)&&(length($cert)>1)){
+                                print RED, &analyse_cert($cert), RESET;
+                                $w_ssl=1;
+                        }
 			if ($c128==128){
 				if(@ssl3t[$ddd]=~/256|168|128/){}
 				else{
@@ -667,15 +678,49 @@ my $analysis="";
 				print "Certificate info: $subj\n";
 				$analysis="WARNING: ($dest_ipint):$port - SELF SIGNED CERTIFICATE! \n";
 			}else {
-      				$subj=~/.*O=(.*)\/.*/g;
+      				$subj=~/O=(.*)\//;
 				my $subj_own=$1;
-				$issue=~/.*O=(.*)\/.*/g;
+				$issue=~/O=(.*)\//;
 				my $iss_own=$1;
-				 print "Certificate info: $subj\n";
+				print "Certificate info ($dest_ipint):$port\n$cert";
 				if($subj_own eq $iss_own){$analysis="WARNING: ($dest_ipint):$port - SELF SIGNED CERTIFICATE! \n"};
 	  		}
 		}
 	}
+	$subj=~/CN=(.*)\//;
+	$common=$1;
+	if ($common !~/$dest_serv.*/gi){
+	$dnsname=gethostbyaddr($dest_ip,AF_INET);
+	$digip=gethostbyname($dnsname);
+	#print $dnsname." ".$digip." ".$dest_ip;
+		if ($common !~/$dnsname/i){
+		      
+			if($dest_ip !~/$digip/){
+				$analysis=$analysis."WARNING: ($dest_ipint):$port - Hostname does not match rDNS Resolution! \n";
+			}
+		}
+	}
+	
+	my $sock = Net::SSL->new(
+			     PeerAddr => $dest_ipint,
+			     PeerPort => $port,
+			     Timeout => 15,
+			     );
+	$sock || ($@ ||= "no Net::SSL connection established");
+	my $error = $@;
+	$error && die("Can't connect to $host:$port; $error; $!");
+	my $server_cert = $sock->get_peer_certificate;
+	my $enddate = $server_cert->not_after;
+	#print "$enddate\n";
+		
+	@expiredt=split(" |-",$enddate);
+	my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime time;
+	$epoch_today = timelocal(0,0,0, $mday,($mon-1),($year+1900));
+	$epoch_expire = timelocal(0, 0, 0, $expiredt[2], ($expiredt[1]-1), $expiredt[0]);
+	if ($epoch_expire<$epoch_today){
+		$analysis=$analysis."WARNING: ($dest_ipint):$port - Certificate Expired! $enddate\n";
+	}
+ 
 	return $analysis;
 }
 
